@@ -1,7 +1,8 @@
 #! /usr/bin/env python3
 
 import sys
-import time
+import datetime
+import pytz
 import socket
 import openpyxl
 
@@ -28,9 +29,13 @@ def parse_and_import_row(config, row):
 
 def parse_row(config, row):
   data = {}
-  data['timestamp'] = int(time.mktime(time.strptime(row[0], '%Y-%m-%d %H:%M')))
+  data['timestamp'] = parse_timestamp(config, row[0])
   data['watts'] = row[1] * 1000
   return data
+
+
+def parse_timestamp(config, timestamp):
+  return int(datetime.datetime.strptime(timestamp, '%Y-%m-%d %H:%M').replace(tzinfo=pytz.timezone(config['data_timezone'])).timestamp())
 
 
 def import_data(config, data):
@@ -52,6 +57,7 @@ def main(argv):
   config['graphite_host'] = argv[2]
   config['graphite_port'] = 2003
   config['metric_path'] = 'energy.household.total.watthours.count'
+  config['data_timezone'] = 'Europe/Stockholm'
 
   parse_and_import_file(config)
 

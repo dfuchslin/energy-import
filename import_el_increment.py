@@ -1,0 +1,72 @@
+#! /usr/bin/env python3
+
+import sys
+import datetime
+import pytz
+import socket
+import openpyxl
+
+
+def parse_and_import_file(config):
+  workbook = openpyxl.load_workbook(config['data_file'])
+  worksheet = workbook.active
+  previous_data = {}
+  for row in worksheet.values:
+    previous_data = parse_and_import_row(config, row, previous_data)
+
+
+def parse_and_import_row(config, row, previous_data):
+  try:
+    data = parse_row(config, row)
+  except Exception as e:
+    print("Skipping unparseable row '{}': {}".format(row, e))
+    return {}
+  data = increment_data(data, previous_data)
+  try:  
+    import_data(config, data)
+  except Exception as e:
+    print("Problem importing row '{}': {}".format(row, e))
+  return data
+
+
+def parse_row(config, row):
+  data = {}
+  data['timestamp'] = parse_timestamp(config, row[0])
+  data['watts'] = row[1] * 1000
+  return data
+
+
+def parse_timestamp(config, timestamp):
+  return int(datetime.datetime.strptime(timestamp, '%Y-%m-%d %H:%M').replace(tzinfo=pytz.timezone(config['data_timezone'])).timestamp())
+
+
+def increment_data(data, previous_data):
+  previous_watts = previous_data['watts'] if ('watts' in previous_data) else 0
+  data['watts'] = data['watts'] + previous_watts
+  return data
+
+
+def import_data(config, data):
+  msg = "{} {:0.0f} {:d}\n".format(config['metric_path'], data['watts'], data['timestamp'])
+  print("importing to {}:{}  [{}]".format(config['graphite_host'], config['graphite_port'], msg.replace('\n', '')), flush = True)
+  sock = socket.socket()
+  sock.connect((config['graphite_host'], config['graphite_port']))
+  sock.sendall(msg.encode())
+  sock.close()
+
+
+def main(argv):
+  if len(argv) < 3:
+    print("python ./import_el.py [excel_file] [graphite_host]")
+    sys.exit(2)
+
+  config = {}
+  config['data_file'] = argv[1]
+  config['graphite_host'] = argv[2]
+  config['graphite_port'] = 2003
+  config['metric_path'] = 'test.energy.household.total.meter_power_total'
+
+  parse_and_import_file(config)
+
+
+main(sys.argv)
